@@ -117,6 +117,31 @@ class EventSerializer(serializers.ModelSerializer):
 
         return event
 
+    # ✅ ADD THIS METHOD
+    def update(self, instance, validated_data):
+        """
+        Override update() to handle nested 'options' list.
+        Strategy: Replace all options with the new ones.
+        """
+        options_data = validated_data.pop('options', None)
+
+        # Update Event fields
+        instance.title = validated_data.get('title', instance.title)
+        instance.description = validated_data.get('description', instance.description)
+        instance.event_type = validated_data.get('event_type', instance.event_type)
+        instance.deadline = validated_data.get('deadline', instance.deadline)
+        instance.save()
+
+        # Update options if provided
+        if options_data is not None:
+            # Delete existing options and create new ones
+            instance.options.all().delete()
+            
+            for slot in options_data:
+                EventOption.objects.create(event=instance, **slot)
+
+        return instance
+
     def get_best_option(self, obj):
         """
         Returns the best‐matching EventOption (if any) as nested JSON.
@@ -125,7 +150,6 @@ class EventSerializer(serializers.ModelSerializer):
         if not best:
             return None
         return EventOptionSerializer(best).data
-
 
 #
 # 3) COLLECTING A SINGLE PARTICIPANT'S PREFERENCES AT ONCE

@@ -12,7 +12,7 @@ export function WebsiteProvider({ children }) {
   });
 
   const [token, setToken] = useState(
-    () => localStorage.getItem("token") || null
+    () => localStorage.getItem("accessToken") || null
   );
 
   const [refreshToken, setRefreshToken] = useState(
@@ -31,8 +31,8 @@ export function WebsiteProvider({ children }) {
 
   // ============ PERSIST TO LOCALSTORAGE ============
   useEffect(() => {
-    if (token) localStorage.setItem("token", token);
-    else localStorage.removeItem("token");
+    if (token) localStorage.setItem("accessToken", token);
+    else localStorage.removeItem("accessToken");
   }, [token]);
 
   useEffect(() => {
@@ -68,62 +68,65 @@ export function WebsiteProvider({ children }) {
 
   // ============ AUTH METHODS - FIX ============
   const login = useCallback(async ({ username, password }) => {
-    setLoading(true);
-    setError(null);
+  setLoading(true);
+  setError(null);
 
+  try {
+    // 1. Ottieni tokens dal backend
+    const tokens = await authAPI.login(username, password);
+    
+    // ✅ 2. Salva tokens in localStorage PRIMA di tutto
+    localStorage.setItem('accessToken', tokens.access);
+    localStorage.setItem('refreshToken', tokens.refresh);
+    localStorage.setItem('user', JSON.stringify({ username }));
+    
+    // 3. Aggiorna anche lo state (per re-render)
+    setToken(tokens.access);
+    setRefreshToken(tokens.refresh);
+    setUser({ username });
+
+    // 4. Ora fetchEvents troverà il token in localStorage ✅
     try {
-      // 1. Ottieni tokens dal backend
-      const tokens = await authAPI.login(username, password);
-      
-      // 2. Salva tokens
-      setToken(tokens.access);
-      setRefreshToken(tokens.refresh);
-      
-      // 3. Salva user
-      setUser({ username });
-
-      // 4. Fetch eventi (non blocca il login se fallisce)
-      try {
-        await fetchEvents();
-      } catch (fetchErr) {
-        console.warn("Eventi non caricati:", fetchErr);
-        // Non bloccare il login per questo
-      }
-
-      return { success: true };
-      
-    } catch (err) {
-      // Estrai messaggio errore dal backend
-      let message = "Credenziali non valide";
-      
-      if (err.response?.data) {
-        // Django JWT restituisce { detail: "..." }
-        message = err.response.data.detail || 
-                  err.response.data.message ||
-                  err.response.data.non_field_errors?.[0] ||
-                  "Errore di autenticazione";
-      } else if (err.message) {
-        message = err.message;
-      }
-      
-      setError(message);
-      
-      // IMPORTANTE: lancia errore per il catch nel componente
-      throw new Error(message);
-      
-    } finally {
-      setLoading(false);
+      await fetchEvents();
+    } catch (fetchErr) {
+      console.warn("Eventi non caricati:", fetchErr);
     }
-  }, [fetchEvents]);
+
+    return { success: true };
+    
+  } catch (err) {
+    let message = "Credenziali non valide";
+    
+    if (err.response?.data) {
+      message = err.response.data.detail || 
+                err.response.data.message ||
+                err.response.data.non_field_errors?.[0] ||
+                "Errore di autenticazione";
+    } else if (err.message) {
+      message = err.message;
+    }
+    
+    setError(message);
+    throw new Error(message);
+    
+  } finally {
+    setLoading(false);
+  }
+}, [fetchEvents]);
 
   const logout = useCallback(() => {
-    setUser(null);
-    setToken(null);
-    setRefreshToken(null);
-    setCachedEvents([]);
-    setError(null);
-    localStorage.clear();
-  }, []);
+  // ✅ Pulisci localStorage direttamente
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('user');
+  
+  // Aggiorna state
+  setUser(null);
+  setToken(null);
+  setRefreshToken(null);
+  setCachedEvents([]);
+  setError(null);
+}, []);
 
   const isAuthenticated = useCallback(() => {
     return !!token && !!user;

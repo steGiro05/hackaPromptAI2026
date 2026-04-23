@@ -16,6 +16,19 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
+// 🎨 Colori per gli eventi (dato che il backend non li fornisce)
+const EVENT_COLORS = {
+  DURATION: "#1976d2",      // Blu
+  ENTIRE_DAY: "#388e3c",    // Verde
+  MULTIPLE_DAYS: "#f57c00", // Arancione
+  DEFAULT: "#9c27b0",       // Viola
+};
+
+// Helper per ottenere il colore basato sul tipo
+const getEventColor = (eventType) => {
+  return EVENT_COLORS[eventType] || EVENT_COLORS.DEFAULT;
+};
+
 export default function HomePage() {
   const { cachedEvents, addEvent, updateEvent, deleteEvent } = useWebsiteStore();
 
@@ -30,11 +43,9 @@ export default function HomePage() {
 
   // Apri modal per edit (click su evento)
   const handleSelectEvent = (calendarEvent) => {
-    // Trova l'evento originale dall'id
-    const eventId = calendarEvent.id.toString().split("-")[0];
-    const originalEvent = cachedEvents.find(
-      (e) => e.id.toString() === eventId
-    );
+    // L'id del calendario è "eventId-optionIndex", estraiamo l'eventId
+    const eventId = calendarEvent.eventId; // ✅ Usa eventId salvato
+    const originalEvent = cachedEvents.find((e) => e.id === eventId);
     if (originalEvent) {
       setEventToEdit(originalEvent);
       setShowModal(true);
@@ -42,14 +53,22 @@ export default function HomePage() {
   };
 
   // Salva evento (crea o aggiorna)
-  const handleSaveEvent = (event) => {
-    if (eventToEdit) {
-      updateEvent(event);
-    } else {
-      addEvent(event);
+  const handleSaveEvent = async (event) => {
+    try {
+      if (eventToEdit) {
+        // ✅ Edit mode: extract ID and pass separately
+        const { id, ...eventData } = event;
+        await updateEvent(id, eventData);
+      } else {
+        // ✅ Create mode: pass whole event
+        await addEvent(event);
+      }
+      setShowModal(false);
+      setEventToEdit(null);
+    } catch (err) {
+      console.error("Errore salvataggio:", err);
+      // L'errore viene gestito dallo store, ma puoi mostrare un toast qui
     }
-    setShowModal(false);
-    setEventToEdit(null);
   };
 
   // Elimina evento
@@ -65,17 +84,24 @@ export default function HomePage() {
     setEventToEdit(null);
   };
 
-  // Converti eventi per react-big-calendar
-  const calendarEvents = cachedEvents.flatMap((event) =>
-    event.slots.map((slot, idx) => ({
-      id: `${event.id}-${idx}`,
+  // ✅ Converti eventi per react-big-calendar (FIXED)
+  const calendarEvents = cachedEvents.flatMap((event) => {
+    // Gestisci caso in cui options potrebbe essere undefined o vuoto
+    const options = event.options || [];
+    
+    return options.map((option, idx) => ({
+      id: `${event.id}-${idx}`,           // ID unico per il calendario
+      eventId: event.id,                   // ✅ ID originale dell'evento
+      optionId: option.id,                 // ✅ ID dell'opzione
       title: event.title,
-      start: fromUTC(slot.start),
-      end: fromUTC(slot.end),
-      allDay: event.type === "entire_day",
-      color: event.color,
-    }))
-  );
+      start: fromUTC(option.start),
+      end: fromUTC(option.end),
+      allDay: event.event_type === "ENTIRE_DAY",  // ✅ Corretto da type a event_type
+      eventType: event.event_type,         // ✅ Per il colore
+      description: event.description,      // ✅ Info aggiuntiva
+      isOpen: event.is_open,               // ✅ Stato dell'evento
+    }));
+  });
 
   return (
     <div style={{ height: "calc(100vh - 100px)", position: "relative" }}>
@@ -91,16 +117,21 @@ export default function HomePage() {
         step={15}
         timeslots={4}
         style={{ height: "100%" }}
-        onSelectEvent={handleSelectEvent} // 👈 Click su evento
+        onSelectEvent={handleSelectEvent}
         eventPropGetter={(event) => ({
           style: {
-            backgroundColor: event.color || "#1976d2",
+            backgroundColor: getEventColor(event.eventType),  // ✅ Colore basato su tipo
             borderRadius: "4px",
-            border: "none",
+            border: event.isOpen ? "none" : "2px solid #666",  // ✅ Bordo se chiuso
             color: "#fff",
             cursor: "pointer",
+            opacity: event.isOpen ? 1 : 0.7,  // ✅ Trasparenza se chiuso
           },
         })}
+        // ✅ Tooltip opzionale
+        tooltipAccessor={(event) => 
+          `${event.title}${event.description ? `\n${event.description}` : ""}`
+        }
       />
 
       {/* FAB + button */}

@@ -10,6 +10,17 @@ const api = axios.create({
   },
 });
 
+// Se il token è salvato nel localStorage:
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('accessToken');
+  console.log('🔑 Token from localStorage:', token ? 'EXISTS' : 'MISSING');  // Debug
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 // Interceptor per aggiungere token a ogni richiesta
 api.interceptors.request.use(
   (config) => {

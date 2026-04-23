@@ -1,11 +1,23 @@
 import React, { useState, useEffect } from "react";
 import SlotInput from "./SlotInput";
 import ParticipantSelector from "./ParticipantSelector";
-import { getRandomColor } from "../utils/colors";
-import { toUTC, fromUTC, diffInMinutes, diffInDays, isInPast } from "../utils/dateUtils";
+import { toUTC, fromUTC, isInPast } from "../utils/dateUtils";
 import usersData from "../data/users.json";
 
-const MAX_SLOTS = 20;
+const MAX_OPTIONS = 20;
+
+// ✅ Backend event types
+const EVENT_TYPES = {
+  DURATION: "DURATION",
+  ENTIRE_DAY: "ENTIRE_DAY",
+  MULTIPLE_DAYS: "MULTIPLE_DAYS",
+};
+
+const EVENT_TYPE_LABELS = {
+  DURATION: "Fascia oraria",
+  ENTIRE_DAY: "Giornata intera",
+  MULTIPLE_DAYS: "Più giorni",
+};
 
 export default function CreateEventModal({
   onClose,
@@ -15,101 +27,111 @@ export default function CreateEventModal({
 }) {
   const isEditMode = !!eventToEdit;
 
-  // Stato form
+  // ✅ Stato form allineato al backend
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [type, setType] = useState("time_based");
-  const [durationDays, setDurationDays] = useState(1);
-  const [durationHours, setDurationHours] = useState(1);
-  const [durationMinutes, setDurationMinutes] = useState(0);
-  const [slots, setSlots] = useState([{ start: null, end: null }]);
-  const [color, setColor] = useState(getRandomColor());
-  const [participants, setParticipants] = useState([]);
+  const [eventType, setEventType] = useState(EVENT_TYPES.DURATION); // ✅ Rinominato
+  const [deadline, setDeadline] = useState(""); // ✅ NUOVO
+  const [options, setOptions] = useState([{ start: null, end: null }]); // ✅ Rinominato da slots
+  const [participants, setParticipants] = useState([]); // Se il backend lo supporta
   const [errors, setErrors] = useState([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Popola i campi se siamo in edit mode
+  // ✅ Popola i campi se siamo in edit mode
   useEffect(() => {
     if (eventToEdit) {
       setTitle(eventToEdit.title || "");
       setDescription(eventToEdit.description || "");
-      setType(eventToEdit.type || "time_based");
-      setColor(eventToEdit.color || getRandomColor());
-      setParticipants(eventToEdit.participants || []);
-
-      if (eventToEdit.type === "entire_day") {
-        setDurationDays(eventToEdit.duration || 1);
-      } else {
-        const totalMinutes = eventToEdit.duration || 60;
-        setDurationHours(Math.floor(totalMinutes / 60));
-        setDurationMinutes(totalMinutes % 60);
+      setEventType(eventToEdit.event_type || EVENT_TYPES.DURATION);
+      
+      // Deadline: converto da UTC a local datetime-local format
+      if (eventToEdit.deadline) {
+        const deadlineLocal = fromUTC(eventToEdit.deadline);
+        // Format per input datetime-local: "YYYY-MM-DDTHH:mm"
+        setDeadline(formatForDatetimeLocal(deadlineLocal));
       }
 
-      const localSlots = eventToEdit.slots.map((slot) => ({
-        start: fromUTC(slot.start),
-        end: fromUTC(slot.end),
-      }));
-      setSlots(localSlots);
+      // Options (ex slots)
+      if (eventToEdit.options && eventToEdit.options.length > 0) {
+        const localOptions = eventToEdit.options.map((option) => ({
+          id: option.id, // ✅ Mantieni l'ID per update
+          start: fromUTC(option.start),
+          end: fromUTC(option.end),
+        }));
+        setOptions(localOptions);
+      }
+
+      // Participants se presenti
+      if (eventToEdit.participants) {
+        setParticipants(eventToEdit.participants);
+      }
     }
   }, [eventToEdit]);
 
-  // Calcola durata
-  const getDurationValue = () => {
-    if (type === "entire_day") {
-      return durationDays;
-    }
-    return durationHours * 60 + durationMinutes;
+  // Helper per formattare data per input datetime-local
+  const formatForDatetimeLocal = (date) => {
+    if (!date) return "";
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const hours = String(d.getHours()).padStart(2, "0");
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
-  // Validazione singolo slot
-  const validateSlot = (slot, index) => {
-    const slotErrors = [];
+  // Helper per default deadline (es. +7 giorni)
+  const getDefaultDeadline = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return formatForDatetimeLocal(d);
+  };
 
-    if (!slot.start || !slot.end) {
-      slotErrors.push(`Slot ${index + 1}: Compila inizio e fine`);
-      return slotErrors;
+  // Set default deadline al mount se non in edit mode
+  useEffect(() => {
+    if (!isEditMode && !deadline) {
+      setDeadline(getDefaultDeadline());
+    }
+  }, [isEditMode]);
+
+  // ✅ Validazione singola option
+  const validateOption = (option, index) => {
+    const optionErrors = [];
+
+    if (!option.start || !option.end) {
+      optionErrors.push(`Opzione ${index + 1}: Compila inizio e fine`);
+      return optionErrors;
     }
 
-    const start = new Date(slot.start);
-    const end = new Date(slot.end);
+    const start = new Date(option.start);
+    const end = new Date(option.end);
 
     if (end <= start) {
-      slotErrors.push(`Slot ${index + 1}: La fine deve essere dopo l'inizio`);
+      optionErrors.push(`Opzione ${index + 1}: La fine deve essere dopo l'inizio`);
     }
 
     if (isInPast(start)) {
-      slotErrors.push(`Slot ${index + 1}: Non puoi creare slot nel passato`);
+      optionErrors.push(`Opzione ${index + 1}: Non puoi creare opzioni nel passato`);
     }
 
-    const duration = getDurationValue();
-    if (type === "time_based") {
-      const slotMinutes = diffInMinutes(start, end);
-      if (slotMinutes < duration) {
-        slotErrors.push(
-          `Slot ${index + 1}: Durata slot (${Math.round(slotMinutes)} min) inferiore alla durata evento (${duration} min)`
-        );
-      }
-    } else {
-      const slotDaysValue = diffInDays(start, end);
-      if (slotDaysValue < duration) {
-        slotErrors.push(
-          `Slot ${index + 1}: Durata slot (${Math.round(slotDaysValue)} giorni) inferiore alla durata evento (${duration} giorni)`
-        );
-      }
+    // Validazione specifica per tipo
+    if (eventType === EVENT_TYPES.ENTIRE_DAY) {
+      // Per ENTIRE_DAY, start e end dovrebbero essere date intere
+      // Qui potresti aggiungere validazione specifica
     }
 
-    return slotErrors;
+    return optionErrors;
   };
 
   // Trova overlaps
   const findOverlaps = () => {
-    const validSlots = slots.filter((s) => s.start && s.end);
+    const validOptions = options.filter((o) => o.start && o.end);
     const overlaps = new Set();
 
-    for (let i = 0; i < validSlots.length; i++) {
-      for (let j = i + 1; j < validSlots.length; j++) {
-        const a = validSlots[i];
-        const b = validSlots[j];
+    for (let i = 0; i < validOptions.length; i++) {
+      for (let j = i + 1; j < validOptions.length; j++) {
+        const a = validOptions[i];
+        const b = validOptions[j];
         const aStart = new Date(a.start).getTime();
         const aEnd = new Date(a.end).getTime();
         const bStart = new Date(b.start).getTime();
@@ -126,92 +148,99 @@ export default function CreateEventModal({
 
   const overlaps = findOverlaps();
 
-  const addSlot = () => {
-    if (slots.length >= MAX_SLOTS) {
-      alert(`Puoi aggiungere massimo ${MAX_SLOTS} slot`);
+  const addOption = () => {
+    if (options.length >= MAX_OPTIONS) {
+      alert(`Puoi aggiungere massimo ${MAX_OPTIONS} opzioni`);
       return;
     }
-    setSlots([...slots, { start: null, end: null }]);
+    setOptions([...options, { start: null, end: null }]);
   };
 
-  const removeSlot = (index) => {
-    if (slots.length > 1) {
-      setSlots(slots.filter((_, i) => i !== index));
+  const removeOption = (index) => {
+    if (options.length > 1) {
+      setOptions(options.filter((_, i) => i !== index));
     }
   };
 
-  const updateSlot = (index, field, value) => {
-    const updated = [...slots];
+  const updateOption = (index, field, value) => {
+    const updated = [...options];
     updated[index][field] = value;
-    setSlots(updated);
+    setOptions(updated);
   };
 
+  // ✅ Submit allineato al backend
   const handleSubmit = (e) => {
     e.preventDefault();
     const allErrors = [];
 
+    // Validazione titolo
     if (!title.trim()) {
       allErrors.push("Inserisci un titolo valido");
     }
 
-    if (type === "entire_day" && durationDays < 1) {
-      allErrors.push("La durata deve essere almeno 1 giorno");
-    }
-    if (type === "time_based" && getDurationValue() < 1) {
-      allErrors.push("La durata deve essere almeno 1 minuto");
+    // Validazione deadline
+    if (!deadline) {
+      allErrors.push("Inserisci una deadline");
+    } else {
+      const deadlineDate = new Date(deadline);
+      if (isInPast(deadlineDate)) {
+        allErrors.push("La deadline non può essere nel passato");
+      }
     }
 
-    if (slots.length > MAX_SLOTS) {
-      allErrors.push(`Massimo ${MAX_SLOTS} slot consentiti`);
+    // Validazione numero opzioni
+    if (options.length > MAX_OPTIONS) {
+      allErrors.push(`Massimo ${MAX_OPTIONS} opzioni consentite`);
     }
 
-    slots.forEach((slot, index) => {
-      const slotErrors = validateSlot(slot, index);
-      allErrors.push(...slotErrors);
+    if (options.length === 0) {
+      allErrors.push("Aggiungi almeno un'opzione");
+    }
+
+    // Validazione ogni opzione
+    options.forEach((option, index) => {
+      const optionErrors = validateOption(option, index);
+      allErrors.push(...optionErrors);
     });
 
+    // Validazione overlaps
     if (overlaps.size > 0) {
-      allErrors.push("Alcuni slot si sovrappongono");
+      allErrors.push("Alcune opzioni si sovrappongono");
     }
 
-    // Validazione partecipanti (opzionale: richiedi almeno 1)
-    if (participants.length === 0) {
-      allErrors.push("Seleziona almeno un partecipante");
-    }
+    // Validazione partecipanti (se richiesto dal backend)
+    // if (participants.length === 0) {
+    //   allErrors.push("Seleziona almeno un partecipante");
+    // }
 
     if (allErrors.length > 0) {
       setErrors(allErrors);
       return;
     }
 
-    let durationValue;
-    let durationUnit;
-
-    if (type === "entire_day") {
-      durationValue = durationDays;
-      durationUnit = "days";
-    } else {
-      durationValue = getDurationValue();
-      durationUnit = "minutes";
-    }
-
-    const slotsUTC = slots.map((slot) => ({
-      start: toUTC(slot.start),
-      end: toUTC(slot.end),
+    // ✅ Costruisci oggetto evento per il backend
+    const optionsUTC = options.map((option) => ({
+      ...(option.id && { id: option.id }), // Includi ID solo se esiste (edit mode)
+      start: toUTC(option.start),
+      end: toUTC(option.end),
     }));
 
     const event = {
-      id: isEditMode ? eventToEdit.id : Date.now(),
+      // In edit mode, includi l'ID
+      ...(isEditMode && { id: eventToEdit.id }),
+      
+      // ✅ Campi allineati al backend
       title: title.trim(),
       description: description.trim(),
-      type,
-      duration: durationValue,
-      durationUnit,
-      slots: slotsUTC,
-      color,
-      participants, // 👈 Array di user IDs
+      event_type: eventType,
+      deadline: toUTC(new Date(deadline)),
+      options: optionsUTC,
+      
+      // Se il backend supporta i partecipanti
+      // participants: participants,
     };
 
+    console.log("📤 Saving event:", event); // Debug
     onSave(event);
   };
 
@@ -247,6 +276,32 @@ export default function CreateEventModal({
         }}
       >
         <h2>{isEditMode ? "Modifica Evento" : "Crea Evento"}</h2>
+
+        {/* Info evento se in edit mode */}
+        {isEditMode && eventToEdit && (
+          <div
+            style={{
+              background: "#e3f2fd",
+              padding: 10,
+              borderRadius: 4,
+              marginBottom: 15,
+              fontSize: 14,
+            }}
+          >
+            <div>
+              <strong>Stato:</strong>{" "}
+              <span style={{ color: eventToEdit.is_open ? "#388e3c" : "#d32f2f" }}>
+                {eventToEdit.is_open ? "🟢 Aperto" : "🔴 Chiuso"}
+              </span>
+            </div>
+            {eventToEdit.best_option && (
+              <div style={{ marginTop: 5 }}>
+                <strong>Opzione migliore:</strong>{" "}
+                {new Date(eventToEdit.best_option.start).toLocaleString("it-IT")}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Errori globali */}
         {errors.length > 0 && (
@@ -336,122 +391,43 @@ export default function CreateEventModal({
             />
           </div>
 
-          {/* Tipo evento */}
+          {/* ✅ Tipo evento (con valori backend) */}
           <div style={{ marginBottom: 15 }}>
             <label>Tipo evento *</label>
-            <div>
-              <label style={{ marginRight: 20 }}>
-                <input
-                  type="radio"
-                  value="time_based"
-                  checked={type === "time_based"}
-                  onChange={() => setType("time_based")}
-                />
-                Time Based (orario)
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  value="entire_day"
-                  checked={type === "entire_day"}
-                  onChange={() => setType("entire_day")}
-                />
-                Entire Day (giornata intera)
-              </label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 5 }}>
+              {Object.entries(EVENT_TYPES).map(([key, value]) => (
+                <label key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="radio"
+                    value={value}
+                    checked={eventType === value}
+                    onChange={() => setEventType(value)}
+                  />
+                  {EVENT_TYPE_LABELS[key]}
+                </label>
+              ))}
             </div>
           </div>
 
-          {/* Durata */}
+          {/* ✅ Deadline (NUOVO) */}
           <div style={{ marginBottom: 15 }}>
-            <label>Durata *</label>
-
-            {type === "entire_day" ? (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  marginTop: 5,
-                }}
-              >
-                <input
-                  type="number"
-                  min={1}
-                  value={durationDays}
-                  onChange={(e) =>
-                    setDurationDays(Math.max(1, Number(e.target.value)))
-                  }
-                  style={{ width: 80, padding: 8 }}
-                />
-                <span>giorni</span>
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  marginTop: 5,
-                }}
-              >
-                <input
-                  type="number"
-                  min={0}
-                  value={durationHours}
-                  onChange={(e) =>
-                    setDurationHours(Math.max(0, Number(e.target.value)))
-                  }
-                  style={{ width: 70, padding: 8 }}
-                />
-                <span>ore</span>
-
-                <input
-                  type="number"
-                  min={0}
-                  max={59}
-                  value={durationMinutes}
-                  onChange={(e) =>
-                    setDurationMinutes(
-                      Math.min(59, Math.max(0, Number(e.target.value)))
-                    )
-                  }
-                  style={{ width: 70, padding: 8 }}
-                />
-                <span>minuti</span>
-              </div>
-            )}
+            <label>Deadline votazione *</label>
+            <input
+              type="datetime-local"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+              style={{ width: "100%", padding: 8, boxSizing: "border-box", marginTop: 5 }}
+              required
+            />
+            <small style={{ color: "#666" }}>
+              I partecipanti devono votare entro questa data
+            </small>
           </div>
 
-          {/* Colore */}
+          {/* Partecipanti (se supportato dal backend) */}
+          {/* 
           <div style={{ marginBottom: 15 }}>
-            <label>Colore evento</label>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                marginTop: 5,
-              }}
-            >
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                style={{
-                  width: 50,
-                  height: 35,
-                  padding: 0,
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              />
-              <span style={{ fontSize: 14, color: "#666" }}>{color}</span>
-            </div>
-          </div>
-
-          {/* Partecipanti */}
-          <div style={{ marginBottom: 15 }}>
-            <label>Partecipanti *</label>
+            <label>Partecipanti</label>
             <div style={{ marginTop: 5 }}>
               <ParticipantSelector
                 users={usersData}
@@ -460,36 +436,42 @@ export default function CreateEventModal({
               />
             </div>
           </div>
+          */}
 
-          {/* Slots */}
+          {/* ✅ Options (ex Slots) */}
           <div style={{ marginBottom: 15 }}>
             <label>
-              Slot disponibili * ({slots.length}/{MAX_SLOTS})
+              Opzioni disponibili * ({options.length}/{MAX_OPTIONS})
             </label>
-            {slots.map((slot, index) => (
+            <small style={{ display: "block", color: "#666", marginBottom: 10 }}>
+              Aggiungi le fasce orarie/date tra cui i partecipanti potranno scegliere
+            </small>
+            
+            {options.map((option, index) => (
               <SlotInput
                 key={index}
                 index={index}
-                slot={slot}
-                type={type}
+                slot={option}  // SlotInput usa ancora "slot" internamente
+                type={eventType === EVENT_TYPES.ENTIRE_DAY ? "entire_day" : "time_based"}
                 hasOverlap={overlaps.has(index)}
-                canRemove={slots.length > 1}
-                onUpdate={updateSlot}
-                onRemove={removeSlot}
+                canRemove={options.length > 1}
+                onUpdate={updateOption}
+                onRemove={removeOption}
               />
             ))}
+            
             <button
               type="button"
-              onClick={addSlot}
-              disabled={slots.length >= MAX_SLOTS}
+              onClick={addOption}
+              disabled={options.length >= MAX_OPTIONS}
               style={{
                 marginTop: 10,
                 padding: "8px 16px",
-                cursor: slots.length >= MAX_SLOTS ? "not-allowed" : "pointer",
-                opacity: slots.length >= MAX_SLOTS ? 0.5 : 1,
+                cursor: options.length >= MAX_OPTIONS ? "not-allowed" : "pointer",
+                opacity: options.length >= MAX_OPTIONS ? 0.5 : 1,
               }}
             >
-              + Aggiungi Slot
+              + Aggiungi Opzione
             </button>
           </div>
 
