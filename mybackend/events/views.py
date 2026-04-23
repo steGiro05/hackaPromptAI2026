@@ -45,9 +45,9 @@ class EventListCreateView(generics.ListCreateAPIView):
         # Only show events the user created
         return Event.objects.filter(created_by=self.request.user)
 
-    def perform_create(self, serializer):
-        # Hook to set created_by = request.user
-        serializer.save(created_by=self.request.user)
+    # def perform_create(self, serializer):
+    #     # Hook to set created_by = request.user
+    #     serializer.save(created_by=self.request.user)
 
 
 class EventRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):

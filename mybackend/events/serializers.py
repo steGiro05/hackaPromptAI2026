@@ -73,7 +73,7 @@ class EventSerializer(serializers.ModelSerializer):
     # Accept a list of slots on create
     options = EventOptionSerializer(many=True)
     # Expose if voting is still open
-    is_open = serializers.BooleanField(read_only=True, source='is_open')
+    is_open = serializers.BooleanField(read_only=True)
     # Include the best‐option summary if you want
     best_option = serializers.SerializerMethodField()
 
