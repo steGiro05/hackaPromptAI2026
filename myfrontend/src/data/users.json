@@ -1,0 +1,58 @@
+[
+  {
+    "id": 1,
+    "username": "mario.rossi",
+    "name": "Mario Rossi",
+    "email": "mario.rossi@example.com",
+    "avatar": "https://i.pravatar.cc/150?u=mario"
+  },
+  {
+    "id": 2,
+    "username": "luigi.verdi",
+    "name": "Luigi Verdi",
+    "email": "luigi.verdi@example.com",
+    "avatar": "https://i.pravatar.cc/150?u=luigi"
+  },
+  {
+    "id": 3,
+    "username": "anna.bianchi",
+    "name": "Anna Bianchi",
+    "email": "anna.bianchi@example.com",
+    "avatar": "https://i.pravatar.cc/150?u=anna"
+  },
+  {
+    "id": 4,
+    "username": "paolo.neri",
+    "name": "Paolo Neri",
+    "email": "paolo.neri@example.com",
+    "avatar": "https://i.pravatar.cc/150?u=paolo"
+  },
+  {
+    "id": 5,
+    "username": "giulia.rosa",
+    "name": "Giulia Rosa",
+    "email": "giulia.rosa@example.com",
+    "avatar": "https://i.pravatar.cc/150?u=giulia"
+  },
+  {
+    "id": 6,
+    "username": "marco.gialli",
+    "name": "Marco Gialli",
+    "email": "marco.gialli@example.com",
+    "avatar": "https://i.pravatar.cc/150?u=marco"
+  },
+  {
+    "id": 7,
+    "username": "sara.blu",
+    "name": "Sara Blu",
+    "email": "sara.blu@example.com",
+    "avatar": "https://i.pravatar.cc/150?u=sara"
+  },
+  {
+    "id": 8,
+    "username": "luca.arancio",
+    "name": "Luca Arancio",
+    "email": "luca.arancio@example.com",
+    "avatar": "https://i.pravatar.cc/150?u=luca"
+  }
+]
