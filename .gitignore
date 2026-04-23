@@ -1,0 +1,117 @@
+# ===============================
+# General
+# ===============================
+*.log
+*.tmp
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+
+# ===============================
+# Python / Django
+# ===============================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Django stuff:
+*.sqlite3
+db.sqlite3
+.env
+*.env
+*.venv/
+venv/
+.env.*
+# Static files (if collected)
+staticfiles/
+static/
+
+# Media files
+media/
+
+# Migrations
+**/migrations/
+!**/migrations/__init__.py
+
+# Python virtual environments
+.env/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# pyenv
+.python-version
+
+# Poetry
+poetry.lock
+
+# Django Secret Key/The .env file
+.secret/
+
+# ===============================
+# React / Node.js
+# ===============================
+
+# dependencies
+node_modules/
+# package lock files
+package-lock.json
+yarn.lock
+
+# production
+build/
+dist/
+# local env files
+.env
+.env.*
+# NEXT.js specific
+.next/
+out/
+
+# Testing
+coverage/
+.nyc_output/
+
+# misc
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===============================
+# IDEs and Editors
+# ===============================
+
+# VS Code
+.vscode/
+# Eclipse
+.project
+.settings/
+# JetBrains (PyCharm, WebStorm, etc.)
+.idea/
+*.iml
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# ===============================
+# Additional (Optional)
+# ===============================
+# macOS
+*.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ===============================
+# End of File
+# ===============================
