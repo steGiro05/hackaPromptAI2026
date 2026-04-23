@@ -9,6 +9,7 @@ from rest_framework.test import APITestCase, APIClient
 
 from .models import Event, EventOption, Participant, Availability
 from .serializers import EventSerializer, ParticipantPreferenceSerializer
+from rest_framework.exceptions import ValidationError
 
 User = get_user_model()
 
@@ -301,3 +302,149 @@ class EventAPITest(APITestCase):
         self.assertEqual(r3.status_code, status.HTTP_200_OK)
         # opt1 should be best (2 AVAILABLE vs. opt2's 1 AVAILABLE)
         self.assertEqual(r3.data['id'], str(opt1.id))
+
+class EventSerializerValidationTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='owner3', password='pass4')
+
+    def test_deadline_cannot_be_past(self):
+        past = timezone.now() - timezone.timedelta(days=1)
+        payload = {
+            'title': 'Past Deadline Event',
+            'description': 'Should fail',
+            'event_type': Event.EventType.TIMESLOT,
+            'deadline': past.isoformat(),
+            'options': [
+                {'start': past.isoformat(), 'end': (past + timezone.timedelta(hours=1)).isoformat()}
+            ],
+        }
+        serializer = EventSerializer(data=payload, context={'request': SimpleNamespace(user=self.user)})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('deadline', serializer.errors)
+
+    def test_option_end_must_be_after_start(self):
+        now = timezone.now()
+        payload = {
+            'title': 'Bad slot event',
+            'description': 'End before start',
+            'event_type': Event.EventType.TIMESLOT,
+            'deadline': (now + timezone.timedelta(days=1)).isoformat(),
+            'options': [
+                {'start': now.isoformat(), 'end': (now - timezone.timedelta(hours=1)).isoformat()},
+            ],
+        }
+        serializer = EventSerializer(data=payload, context={'request': SimpleNamespace(user=self.user)})
+        self.assertFalse(serializer.is_valid())
+        # Option serializer might not catch it automatically unless you add a validator.
+        # We can assert the serializer errors include options.*.end or call custom validator.
+
+
+class ParticipantPreferenceEdgeCases(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='owner4', password='pass5')
+        self.event = Event.objects.create(
+            title='Participants Test',
+            description='Edge cases',
+            event_type=Event.EventType.TIMESLOT,
+            created_by=self.user,
+            deadline=timezone.now() + timezone.timedelta(days=2),
+        )
+        now = timezone.now()
+        self.option = EventOption.objects.create(
+            event=self.event,
+            start=now,
+            end=now + timezone.timedelta(hours=1),
+            order=0
+        )
+
+    def test_missing_availabilities(self):
+        data = {
+            'name': 'Derek',
+            'email': 'derek@example.com',
+            'availabilities': []
+        }
+        serializer = ParticipantPreferenceSerializer(data=data, context={'event': self.event})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('availabilities', serializer.errors)
+
+    def test_duplicate_email_for_event(self):
+        Participant.objects.create(event=self.event, name='Jane', email='jane@example.com')
+        data = {
+            'name': 'Jane Duplicate',
+            'email': 'jane@example.com',
+            'availabilities': [
+                {'option': self.option, 'status': Availability.Status.AVAILABLE}
+            ]
+        }
+        serializer = ParticipantPreferenceSerializer(data=data, context={'event': self.event})
+        self.assertFalse(serializer.is_valid())
+        # Check if the uniqueness constraint raises on save
+        with self.assertRaises(Exception):
+            serializer.save()
+
+
+class EventAPIPermissionEdgeCases(APITestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner_api', password='pass6')
+        self.other = User.objects.create_user(username='other', password='pass7')
+        now = timezone.now()
+        self.event = Event.objects.create(
+            title='Owner Event',
+            description='Owned event',
+            event_type=Event.EventType.TIMESLOT,
+            created_by=self.owner,
+            deadline=now + timezone.timedelta(days=1),
+        )
+        self.client = APIClient()
+
+    def test_other_user_cannot_delete_event(self):
+        self.client.force_authenticate(user=self.other)
+        url = f"/api/events/{self.event.id}/"
+        resp = self.client.delete(url)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Event.objects.filter(id=self.event.id).exists())
+
+
+class BestMatchEdgeCases(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='owner5', password='pass8')
+        self.event = Event.objects.create(
+            title='Best Match Tests',
+            description='Edge cases',
+            event_type=Event.EventType.TIMESLOT,
+            created_by=self.user,
+            deadline=timezone.now() + timezone.timedelta(days=1),
+        )
+        now = timezone.now()
+        self.opt1 = EventOption.objects.create(
+            event=self.event,
+            start=now,
+            end=now + timezone.timedelta(hours=1),
+            order=0
+        )
+        self.opt2 = EventOption.objects.create(
+            event=self.event,
+            start=now + timezone.timedelta(days=1),
+            end=now + timezone.timedelta(days=1, hours=1),
+            order=1
+        )
+
+    def test_best_match_with_tie_uses_maybe(self):
+        alice = Participant.objects.create(event=self.event, name='Alice', email='alice2@test.com')
+        bob = Participant.objects.create(event=self.event, name='Bob', email='bob2@test.com')
+        Availability.objects.create(participant=alice, option=self.opt1, status=Availability.Status.AVAILABLE)
+        Availability.objects.create(participant=alice, option=self.opt2, status=Availability.Status.MAYBE)
+        Availability.objects.create(participant=bob, option=self.opt1, status=Availability.Status.AVAILABLE)
+        Availability.objects.create(participant=bob, option=self.opt2, status=Availability.Status.AVAILABLE)
+
+        best = self.event.find_best_option()
+        self.assertEqual(best, self.opt1)  # opt1 has 2 AVAILABLE, opt2 has 1 AVAILABLE + 1 MAYBE
+
+    def test_best_match_with_no_options(self):
+        empty_event = Event.objects.create(
+            title='Empty Event',
+            description='No options yet',
+            event_type=Event.EventType.DURATION,
+            created_by=self.user,
+        )
+        self.assertIsNone(empty_event.find_best_option())

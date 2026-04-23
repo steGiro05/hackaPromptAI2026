@@ -27,6 +27,13 @@ class EventOptionSerializer(serializers.ModelSerializer):
         fields = ('id', 'start', 'end')
         # you could add 'order' here if you care about preserving creation order
 
+    def validate(self, attrs):
+        start = attrs.get('start')
+        end = attrs.get('end')
+        if start and end and end <= start:
+            raise serializers.ValidationError("Option end must be after its start.")
+        return attrs
+
 
 class AvailabilitySerializer(serializers.ModelSerializer):
     """
@@ -142,6 +149,12 @@ class ParticipantPreferenceSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=100)
     email = serializers.EmailField()
     availabilities = AvailabilitySerializer(many=True, allow_empty=False)
+
+    def validate_email(self, value):
+        event = self.context.get('event')
+        if event and Participant.objects.filter(event=event, email__iexact=value).exists():
+            raise serializers.ValidationError("A participant with this email already exists for this event.")
+        return value
 
     def validate_availabilities(self, value):
         """
